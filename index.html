@@ -26,71 +26,63 @@
       const ctx = canvas.getContext("2d");
 
       const ROWS = 7;
-      const COLS = 53; // 52 weeks + margin
+      const COLS = 53;
       const BRICK_WIDTH = canvas.width / COLS;
       const BRICK_HEIGHT = 20;
 
-      async function fetchGitHubContributions(username) {
-        const query = `{
-        user(login: "${username}") {
-          contributionsCollection {
-            contributionCalendar {
-              weeks {
-                contributionDays {
-                  contributionCount
-                }
-              }
-            }
-          }
-        }
-      }`;
+      let paddle = {
+        width: 100,
+        height: 12,
+        x: canvas.width / 2 - 50,
+        y: canvas.height - 20,
+        speed: 7,
+        dx: 0,
+      };
 
+      function drawPaddle() {
+        ctx.fillStyle = "#00ffff";
+        ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+      }
+
+      function movePaddle() {
+        paddle.x += paddle.dx;
+        if (paddle.x < 0) paddle.x = 0;
+        if (paddle.x + paddle.width > canvas.width)
+          paddle.x = canvas.width - paddle.width;
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowRight") paddle.dx = paddle.speed;
+        if (e.key === "ArrowLeft") paddle.dx = -paddle.speed;
+      });
+      document.addEventListener("keyup", (e) => {
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") paddle.dx = 0;
+      });
+
+      async function fetchBricksFromServer() {
         try {
-          const response = await fetch("https://api.github.com/graphql", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: "Bearer YOUR_GITHUB_TOKEN", // Replace this with your GitHub token
-            },
-            body: JSON.stringify({ query }),
-          });
-
+          const response = await fetch("/.netlify/functions/getCommits");
           const data = await response.json();
           const weeks =
             data.data.user.contributionsCollection.contributionCalendar.weeks;
+
           const brickData = [];
           for (let r = 0; r < 7; r++) {
             for (let c = 0; c < weeks.length; c++) {
               const day = weeks[c].contributionDays[r];
-              const active = day.contributionCount > 0;
               brickData.push({
                 x: c * BRICK_WIDTH,
                 y: r * BRICK_HEIGHT,
-                active,
+                active: day.contributionCount > 0,
                 count: day.contributionCount,
               });
             }
           }
           return brickData;
-        } catch (error) {
-          console.error("Error fetching GitHub data:", error);
+        } catch (err) {
+          console.error("Using fallback bricks due to error:", err);
           return generateFallbackBricks();
         }
-      }
-
-      function generateFallbackBricks() {
-        const fallback = [];
-        for (let r = 0; r < ROWS; r++) {
-          for (let c = 0; c < COLS; c++) {
-            fallback.push({
-              x: c * BRICK_WIDTH,
-              y: r * BRICK_HEIGHT,
-              active: Math.random() > 0.3,
-              count: Math.floor(Math.random() * 5),
-            });
-          }
-        }
-        return fallback;
       }
 
       let bricks = [];
@@ -136,12 +128,24 @@
             }
           }
         }
+
+        // Paddle collision
+        if (
+          ball.x > paddle.x &&
+          ball.x < paddle.x + paddle.width &&
+          ball.y + ball.radius > paddle.y &&
+          ball.y - ball.radius < paddle.y + paddle.height
+        ) {
+          ball.dy = -ball.dy;
+        }
       }
 
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         drawBricks();
         drawBall();
+        drawPaddle();
+        movePaddle();
         collisionDetection();
 
         if (
@@ -150,10 +154,7 @@
         ) {
           ball.dx = -ball.dx;
         }
-        if (
-          ball.y + ball.dy < ball.radius ||
-          ball.y + ball.dy > canvas.height - ball.radius
-        ) {
+        if (ball.y + ball.dy < ball.radius) {
           ball.dy = -ball.dy;
         }
 
@@ -163,10 +164,11 @@
         requestAnimationFrame(draw);
       }
 
-      fetchGitHubContributions("chathrapathinikhil").then((data) => {
+      bricks = fetchBricksFromServer().then((data) => {
         bricks = data;
         draw();
       });
+      draw();
     </script>
   </body>
 </html>
