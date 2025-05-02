@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Worokanoid - Break Your Commits</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      canvas {
+        background: #000;
+        box-shadow: 0 0 20px #0f0;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const ROWS = 7;
+      const COLS = 53; // 52 weeks + margin
+      const BRICK_WIDTH = canvas.width / COLS;
+      const BRICK_HEIGHT = 20;
+
+      async function fetchGitHubContributions(username) {
+        const query = `{
+        user(login: "${username}") {
+          contributionsCollection {
+            contributionCalendar {
+              weeks {
+                contributionDays {
+                  contributionCount
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+        try {
+          const response = await fetch("https://api.github.com/graphql", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: "Bearer YOUR_GITHUB_TOKEN", // Replace this with your GitHub token
+            },
+            body: JSON.stringify({ query }),
+          });
+
+          const data = await response.json();
+          const weeks =
+            data.data.user.contributionsCollection.contributionCalendar.weeks;
+          const brickData = [];
+          for (let r = 0; r < 7; r++) {
+            for (let c = 0; c < weeks.length; c++) {
+              const day = weeks[c].contributionDays[r];
+              const active = day.contributionCount > 0;
+              brickData.push({
+                x: c * BRICK_WIDTH,
+                y: r * BRICK_HEIGHT,
+                active,
+                count: day.contributionCount,
+              });
+            }
+          }
+          return brickData;
+        } catch (error) {
+          console.error("Error fetching GitHub data:", error);
+          return generateFallbackBricks();
+        }
+      }
+
+      function generateFallbackBricks() {
+        const fallback = [];
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            fallback.push({
+              x: c * BRICK_WIDTH,
+              y: r * BRICK_HEIGHT,
+              active: Math.random() > 0.3,
+              count: Math.floor(Math.random() * 5),
+            });
+          }
+        }
+        return fallback;
+      }
+
+      let bricks = [];
+
+      let ball = {
+        x: canvas.width / 2,
+        y: canvas.height - 30,
+        dx: 2,
+        dy: -2,
+        radius: 8,
+      };
+
+      function drawBall() {
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#32de84";
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      function drawBricks() {
+        for (let brick of bricks) {
+          if (brick.active) {
+            let green = Math.min(255, 50 + brick.count * 10);
+            ctx.fillStyle = `rgb(50, ${green}, 50)`;
+            ctx.fillRect(brick.x, brick.y, BRICK_WIDTH - 2, BRICK_HEIGHT - 2);
+          }
+        }
+      }
+
+      function collisionDetection() {
+        for (let brick of bricks) {
+          if (brick.active) {
+            if (
+              ball.x > brick.x &&
+              ball.x < brick.x + BRICK_WIDTH &&
+              ball.y > brick.y &&
+              ball.y < brick.y + BRICK_HEIGHT
+            ) {
+              ball.dy = -ball.dy;
+              brick.active = false;
+              break;
+            }
+          }
+        }
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBricks();
+        drawBall();
+        collisionDetection();
+
+        if (
+          ball.x + ball.dx > canvas.width - ball.radius ||
+          ball.x + ball.dx < ball.radius
+        ) {
+          ball.dx = -ball.dx;
+        }
+        if (
+          ball.y + ball.dy < ball.radius ||
+          ball.y + ball.dy > canvas.height - ball.radius
+        ) {
+          ball.dy = -ball.dy;
+        }
+
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        requestAnimationFrame(draw);
+      }
+
+      fetchGitHubContributions("chathrapathinikhil").then((data) => {
+        bricks = data;
+        draw();
+      });
+    </script>
+  </body>
+</html>
